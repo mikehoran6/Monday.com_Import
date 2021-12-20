@@ -75,7 +75,7 @@ def getdomains(client_id):
     web_addresses = xml.find_all('web-address')
     domains = []
     for i in range(len(web_addresses)):
-        domain = web_addresses[i].find('url').text
+        domain = web_addresses[i].url.text
         domains.append(urlparse(domain).hostname)
     return domains
 
