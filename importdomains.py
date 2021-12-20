@@ -2,11 +2,14 @@ import requests
 import json
 import pandas as pd
 from collections import defaultdict
+from urllib.parse import urlparse
+from bs4 import BeautifulSoup
 
 # constants
 apiKey = "eyJhbGciOiJIUzI1NiJ9.eyJ0aWQiOjEyMjY1NDI2NSwidWlkIjoyMDgyODM5NSwiaWFkIjoiMjAyMS0wOC0zMFQyMDo1ODoxOC42ODdaIiwicGVyIjoibWU6d3JpdGUiLCJhY3RpZCI6ODQwNTAwMywicmduIjoidXNlMSJ9.ZO2c9M_gmaTIgMCVHIqyFTQq9g5WGSppRtq04nTRHKk"
 apiUrl = "https://api.monday.com/v2"
 mondayheaders = {"Authorization": apiKey}
+highriseheaders = ('a1d602407f0177f46e739d6db3b60c0d', 'X')
 #server# : group_id
 servers = {"649": "new_group70733", "609": "new_group30273", "544": "new_group359", "493": "new_group30273", "479": "new_group6883"}
 
@@ -65,6 +68,18 @@ def importsingledomain(domain):
     r = requests.post(url=apiUrl, json=data, headers=mondayheaders)
     return json.loads(r.text)['data']['create_item']['id']
 
+def getdomains(client_id):
+    company_url = 'https://hozio.highrisehq.com/companies/' + client_id + '.xml'
+    rawxml = requests.get(company_url, auth=highriseheaders).text
+    xml = BeautifulSoup(rawxml, 'html.parser')
+    web_addresses = xml.find_all('web-address')
+    domains = []
+    for i in range(len(web_addresses)):
+        domain = web_addresses[i].find('url').text
+        domains.append(urlparse(domain).hostname)
+    return domains
+
 def isnan(value):
     return value != value
+
 
