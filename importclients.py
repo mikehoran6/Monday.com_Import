@@ -1,7 +1,7 @@
 import requests
 import json
 import pandas as pd
-from importdomains import importsingledomain
+from importdomains import importsingledomain, getdomains
 from bs4 import BeautifulSoup
 from collections import defaultdict
 from urllib.parse import urlparse
@@ -11,11 +11,10 @@ apiKey = "eyJhbGciOiJIUzI1NiJ9.eyJ0aWQiOjEyMjY1NDI2NSwidWlkIjoyMDgyODM5NSwiaWFkI
 apiUrl = "https://api.monday.com/v2"
 mondayheaders = {"Authorization": apiKey}
 highriseheaders = ('a1d602407f0177f46e739d6db3b60c0d', 'X')
-#highrise author id : monday.com user id
-highriseauthors = {'1428939':'20828395', '1421544':'Amit Singh', '1271729':'Clynton Minott', '1408759':'Damian Lester', '1421543':'David Townsend', '1434531':'Erick Romero', '1431552':'Frank Cap', '1020077':'John Bosco', '1434532':'Joseph Puente', '1271728':'Matt Ross', '1428670':'Matthew Zolciak', '1435400':'Michael Little', '1020269':'20828395', '279715':'Steven Orandello', '1434530':'Tyler Rodriguez', '1428533':'Vincent Nicolo'}
+#highrise tag id: monday.com tag id
+tagids = {'3511056': '12698418', '6736342': '12698655', '6724500': '12698656', '6725330': '12698661', '6362146': '12335747', '1262049': '12698668', '6671026': '12698672', '6387916': '12698674', '6517709': '12698675', '6491223': '12698679', '6654796': '12698680', '6095864': '12698681', '6516509': '12698682', '6745422': '12698683', '6751286': '12698685', '1410548': '12698687', '6674734': '12335746', '6087272': '10764095', '6096010': '12698693', '4228561': '12698696', '6480900': '12698698', '6743310': '12698699', '1578653': '12698700', '6275932': '12698701'}
 
-
-def importclient(client_id, domains, contacts):
+def importclient(client_id):
     '''
         importclient imports the highrise client into the Clients board with domains and contacts linked.
         :param client_id: highrise client id
@@ -27,10 +26,71 @@ def importclient(client_id, domains, contacts):
     client_url = 'https://hozio.highrisehq.com/companies/' + client_id + '.xml'
     rawxml = requests.get(client_url, auth=highriseheaders).text
     xml = BeautifulSoup(rawxml, 'html.parser')
-    company = xml.find('company')
-    contact_data = xml.find('contact-data')
 
-    #tags
+    #sort highrise data into variables
+    address_field = ''
+    addresses = xml.find('addresses').find_all('address')
+    for i in addresses:
+        address_field += str(i.street.text) + ', ' + str(i.city.text) + ' ' + str(i.state.text) + ' ' + str(i.zip.text) + '\n'
+
+    email_field = ''
+    emails = xml.find('email-addresses').find_all('address')
+    for i in emails:
+        email_field += i.text + '\n'
+
+    phone_field = ''
+    phones = xml.find_all('phone-number')
+    for i in phones:
+        phone_field += i.number.text + '\n'
+
+    # highrise tag id: monday group id
+    groups = {'6725330': 'topics', '1262049': 'new_group16190', '6654796': 'new_group', '6745422': 'new_group23105'}
+
+    tag_ids = []
+    tags = xml.find_all('tag')
+    group_id = 'topics'
+    for i in tags:
+        highrise_tag_id = i.id.text
+        tag_ids.append(int(tagids[highrise_tag_id]))
+        if highrise_tag_id in groups:
+            group_id = groups[highrise_tag_id]
+
+    notes_field = ''
+    notes = xml.find_all('subject_data')
+    for i in notes:
+        notes_field += i.find('subject_field_label').text + ': ' + i.find('value').text + '\n'
+
+    created_at = xml.find('created-at').text.split('T')[0]
+
+    # get highrise contacts, import contacts into Contacts board
+    contacts = importcontacts(client_id)
+
+    # get highrise domains, import domains into Domains board
+    domains = []
+    client_domains = getdomains(client_id)
+    for domain in client_domains:
+        domains.append(int(importsingledomain(domain)))
+
+    # create monday.com API query
+    create_item = 'mutation ($board_id: Int!, $group_id: String, $item_name: String, $columnVals: JSON!){ create_item (board_id: $board_id, group_id: $group_id, item_name: $item_name, column_values:$columnVals) { id } }'
+    vars = {
+        'board_id': 1627574436,
+        'group_id': group_id,
+        'item_name': xml.find('name').text,
+        'columnVals': json.dumps({
+            'connect_boards20': {'item_ids': contacts},
+            'tags8': {'tag_ids':tag_ids},
+            'link_to_domains': {'item_ids': domains},
+            'long_text8': notes_field,
+            'long_text7': phone_field,
+            'long_text74': email_field,
+            'long_text4': address_field,
+            'date44': {'date': created_at}
+        })
+    }
+    data = {'query': create_item, 'variables': vars}
+    response = json.loads(requests.post(url=apiUrl, json=data, headers=mondayheaders).text)
+    return int(response['data']['create_item']['id'])
 
 #create client contact on Contact board and note new contact item_id
 def importcontacts(client_id):
@@ -60,7 +120,13 @@ def importcontacts(client_id):
         else:
             phonetext = ''
 
-        email = person.find('email-address').address.text
+        emails = person.find_all('email-address')
+        if len(emails) > 0:
+            emailtext = ''
+            for i in emails:
+                text += i.find('address').text + '\n'
+        else:
+            emailtext = ''
 
         #create monday.com API query
         create_item = 'mutation ($board_id: Int!, $group_id: String, $item_name: String, $columnVals: JSON!){ create_item (board_id: $board_id, group_id: $group_id, item_name: $item_name, column_values:$columnVals) { id } }'
@@ -71,49 +137,17 @@ def importcontacts(client_id):
             'columnVals': json.dumps({
                 'text0': title,
                 'phone3': phonetext,
-                'email5': email
+                'email5': emailtext
             })
         }
         data = {'query': create_item, 'variables': vars}
         response = json.loads(requests.post(url=apiUrl, json=data, headers=mondayheaders).text)
-        contacts.append(response['data']['create_item']['id'])
+        contacts.append(int(response['data']['create_item']['id']))
     return contacts
-
-def importtasks(client_id, client_name):
-    '''
-    #create task group in Client Tasks Board
-    #query = 'mutation { create_board (board_name: "test", board_kind: public, template_id: 1773458360) { id }}'
-    create_group = "mutation { create_group (board_id: 1673060240, group_name: \"" + client_name + "\") { id }}"
-    data = {'query': create_group}
-    response = json.loads(requests.post(url=apiUrl, json=data, headers=mondayheaders).text)
-    group_id = response['data']['create_group']['id']
-    '''
-    #get all tasks for client
-    tasks_url = 'https://hozio.highrisehq.com/companies/' + client_id + '/tasks.xml'
-    rawxml = requests.get(tasks_url, auth=highriseheaders).text
-    xml = BeautifulSoup(rawxml, 'html.parser')
-    tasks = xml.find_all('task')
-    if len(tasks) == 0:
-        return None
-    for task in tasks:
-        #get date
-        alert_date = task.find('alert-at').text.split("T")[0]
-        task_body = task.find('body').text
-        author = task.find('author-id').text
-
-        # create monday.com API query
-        create_task = "mutation ($board_id: Int!, $group_id: String, $item_name: String){ create_item (board_id: $board_id, group_id: $group_id, item_name: $item_name, column_values: \"{\\\"date\\\" : {\\\"date\\\" : \\\"" + alert_date + "\\\"}, \\\"person\\\" : {\\\"personsAndTeams\\\":[{\\\"id\\\":" + highriseauthors[author] + ",\\\"kind\\\":\\\"person\\\"}]}}\") { id } }"
-        vars = {
-            'board_id': 1673060240,
-            'group_id': group_id,
-            'item_name': task_body
-        }
-        data = {'query': create_task, 'variables': vars}
-        response = json.loads(requests.post(url=apiUrl, json=data, headers=mondayheaders).text)
-    return None
 
 def checkdomain(domainsdict, domain):
     return domainsdict
+
 
 '''
 importcontacts('81754055')

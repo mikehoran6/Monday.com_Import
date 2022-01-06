@@ -58,11 +58,14 @@ def addtoallips(unique_ip, domainslist, server):
 
 #import domain to Domains board and return the new item id
 def importsingledomain(domain):
-    create_item = 'mutation ($board_id: Int!, $group_id: String, $item_name: String){ create_item (board_id: $board_id, group_id: $group_id, item_name: $item_name) { id } }'
+    create_item = 'mutation ($board_id: Int!, $group_id: String, $item_name: String, $columnVals: JSON!){ create_item (board_id: $board_id, group_id: $group_id, item_name: $item_name, column_values:$columnVals) { id } }'
     vars = {
         'board_id': 1657668859,
         'group_id': 'topics',
-        'item_name': str(domain)
+        'item_name': domain,
+        'columnVals': json.dumps({
+            'link': {'url': domain, 'text': domain}
+        })
     }
     data = {'query': create_item, 'variables': vars}
     r = requests.post(url=apiUrl, json=data, headers=mondayheaders)
@@ -76,7 +79,7 @@ def getdomains(client_id):
     domains = []
     for i in range(len(web_addresses)):
         domain = web_addresses[i].url.text
-        domains.append(urlparse(domain).hostname)
+        domains.append(urlparse(domain).hostname.lstrip('www.'))
     return domains
 
 def isnan(value):

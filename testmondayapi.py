@@ -42,10 +42,24 @@ def addtags():
     r = requests.post(url=apiUrl, json=data, headers=headers)  # make request
     print(r.json())
 
+def testfield():
+    query = 'mutation ($board_id: Int!, $item_id: Int!, $columnVals: JSON!) { change_multiple_column_values (item_id:$item_id, board_id:$board_id, column_values:$columnVals) { id } }'
+    vars = {
+        'board_id': 1627574436,
+        'item_id': 1739486818,
+        'columnVals': json.dumps({
+            'long_text4': "test\ntest\ntest"
+        })
+    }
+
+    data = {'query': query, 'variables': vars}
+    r = requests.post(url=apiUrl, json=data, headers=headers)  # make request
+    print(r.json())
+
 def mondaymodule():
     boards = monday.boards.fetch_boards()
     board = monday.boards.fetch_items_by_board_id(1627574436)
     tags = monday.tags.fetch_tags()
     print()
 
-test()
+testfield()
